@@ -19,22 +19,23 @@ This tool is that playback, with annotations.
 
 ## Requirements
 
-- iOS 18.1+ (Apple Intelligence / Foundation Models framework)
-- Device with Apple Intelligence support (iPhone 15 Pro and later, or A17 Pro / M-series iPad)
-- Xcode 16+
+- **iOS 18.1+** for the core loop: record → replay → on-device transcription → speech metrics.
+- **iOS 26+** for the LLM coaching critique — the **Foundation Models framework** (`LanguageModelSession`) is an iOS 26 API, *not* iOS 18.1. The app gates it behind `if #available(iOS 26.0, *)`; on 18.1–18.x you still get transcript + metrics, but the critique section shows "coaching unavailable."
+- Device with Apple Intelligence support (iPhone 15 Pro and later, or A17 Pro / M-series iPad).
+- **Xcode 26+** (iOS 26 SDK) to build the coaching path. Built and verified against `iphonesimulator26.2`.
 
 ## Current status
 
-**Scaffold only — no phase implemented yet.** The data layer is done; every screen is still a stub that renders a placeholder.
+**Phases 1–4 implemented and building** (verified via `xcodebuild`, iOS Simulator). End-to-end today: pick a question → record → replay → on-device transcript → speech metrics → LLM coaching critique (requires iOS 26 — see Requirements) → saved session → History tab → reopen any past session.
 
-- ✅ **Done:** `Models/` (Question, Session, SpeechMetrics, Critique), `Services/PromptLibrary.swift`, `Resources/questions.json`, app shell (`ContentView`, `BehavioralCoachApp`), Info.plist permission strings.
-- ⬜ **Phase 1 (next):** record → replay. Implement `QuestionListView`, `RecordingView`, `RecordingViewModel`, `VideoRecorder`, `CameraPreview`, and a stub `AnalysisView` player.
-- ⬜ **Phase 2:** `Transcriber.swift`.
-- ⬜ **Phase 3:** `LLMAnalyzer`, `MetricsAnalyzer`, `AnalysisViewModel`.
-- ⬜ **Phase 4:** `HistoryView`, `SessionDetailView` + SwiftData wiring.
-- ⬜ **Phase 5:** `BehavioralCoachCpp/` (not created yet).
+- ✅ **Phase 1 — record → replay:** `QuestionListView`, `RecordingView`, `RecordingViewModel`, `VideoRecorder`, `CameraPreview`, `AnalysisView` player.
+- ✅ **Phase 2 — transcription:** `Transcriber` (on-device `SFSpeechRecognizer`, `requiresOnDeviceRecognition = true`, no cloud fallback).
+- ✅ **Phase 3 — metrics + critique:** `MetricsAnalyzer` (Swift), `LLMAnalyzer` (Foundation Models, manual JSON decode, availability-gated), full pipeline in `AnalysisViewModel`, metrics + critique UI in `AnalysisView`.
+- ✅ **Phase 4 — persistence + History:** `Session` saved to SwiftData after analysis; `RecordingStore` moves videos to stable `Documents/Recordings` (re-resolved across launches); `HistoryView` (list + swipe-delete) and `SessionDetailView` (read-only replay) share `AnalysisResultsView` with the live screen.
+- ⬜ **Phase 5 (next):** `BehavioralCoachCpp/` — move `MetricsAnalyzer.compute` into a C++ module (the clean interop boundary; the Swift signature stays identical). Note: new C++ sources + the bridging header must be wired into `project.pbxproj`.
+- ⬜ **Roadmap:** vocal-tone (audio prosody) and eye-contact (Vision gaze) presentation analysis — see [Roadmap](#roadmap-presentation-analysis).
 
-Before building Phase 1, confirm in Xcode that the three Info.plist usage keys (below) are present on the target — the app crashes without them.
+> ⚠️ **Not yet smoke-tested on a physical device.** Recording needs a real camera (the Simulator has none). The build is green but the record → replay → analyze loop hasn't been exercised on-device yet.
 
 ## Build phases
 

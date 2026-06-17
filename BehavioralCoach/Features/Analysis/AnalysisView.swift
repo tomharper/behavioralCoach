@@ -4,8 +4,9 @@
 //
 //  Phase 1: shows "Recording saved" + a replay player for the captured video.
 //  Phase 2: adds an on-device transcript section below the player.
-//  Phase 3: adds critique section (strengths, issues with excerpts).
-//  Phase 4: this screen is also reached from History via SessionDetailView.
+//  Phase 3: adds metrics + critique sections (strengths, issues with excerpts).
+//  Phase 4: results rendering extracted into AnalysisResultsView (shared with
+//           SessionDetailView); analysis is persisted as a Session on .done.
 //  Phase 5: metrics section shows speaking rate, pauses, codas from C++ analyzer.
 //
 //  Design principle: this screen is READ-ONLY. The user watches their video
@@ -18,12 +19,12 @@ import SwiftUI
 import AVKit
 
 struct AnalysisView: View {
-    // In Phase 4 this takes a Session so it can be reopened from history.
     let videoURL: URL
     let question: Question
 
     private let player: AVPlayer
     @State private var viewModel = AnalysisViewModel()
+    @Environment(\.modelContext) private var modelContext
 
     init(videoURL: URL, question: Question) {
         self.videoURL = videoURL
@@ -42,45 +43,40 @@ struct AnalysisView: View {
                     .aspectRatio(9.0 / 16.0, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
 
-                transcriptSection
+                content
             }
             .padding()
         }
         .navigationTitle("Review")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            await viewModel.analyze(videoURL: videoURL, question: question)
+            await viewModel.analyze(videoURL: videoURL, question: question, context: modelContext)
         }
     }
 
     @ViewBuilder
-    private var transcriptSection: some View {
+    private var content: some View {
         switch viewModel.phase {
         case .transcribing:
             ProgressView("Transcribing…")
                 .frame(maxWidth: .infinity, alignment: .center)
-
-        case .done:
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Transcript")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                if viewModel.transcript.isEmpty {
-                    Text("No speech detected")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    Text(viewModel.transcript)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-
+        case .computing:
+            ProgressView("Analyzing delivery…")
+                .frame(maxWidth: .infinity, alignment: .center)
+        case .coaching:
+            ProgressView("Coaching…")
+                .frame(maxWidth: .infinity, alignment: .center)
         case .failed(let message):
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        case .done:
+            AnalysisResultsView(
+                transcript: viewModel.transcript,
+                metrics: viewModel.metrics,
+                critique: viewModel.critique,
+                coachingError: viewModel.coachingError
+            )
         }
     }
 }

@@ -12,8 +12,7 @@
 //
 //  This is the clean interop boundary: one function, one input type,
 //  one output type. Everything above it in the stack treats it as a
-//  black box. That's what makes it a good first Swift/C++ bridge
-//  exercise — you don't have to worry about partial refactors.
+//  black box.
 //
 
 import Foundation
@@ -25,45 +24,79 @@ enum MetricsAnalyzer {
     ///   - transcript: The full transcribed text of the answer.
     ///   - durationSeconds: Total length of the audio/video in seconds.
     /// - Returns: A `SpeechMetrics` value with all fields populated.
-    ///
-    /// TODO (Phase 3): implement in Swift.
-    ///
-    /// Reference behavior:
-    ///   - wordsPerMinute = word count / (duration / 60)
-    ///   - fillerCount = matches for: um, uh, like, you know, basically,
-    ///                                actually, kind of, sort of
-    ///     (use case-insensitive word-boundary regex)
-    ///   - sentenceCount = count of .!? terminators (naive is fine)
-    ///   - avgSentenceWords = wordCount / max(sentenceCount, 1)
-    ///   - avgPauseSeconds = not knowable from transcript alone in Phase 3.
-    ///     Stub to 0 until Phase 6 adds DSP audio features.
-    ///   - longestPauseSeconds = 0 for now (same reason)
-    ///   - detectedCodas = regex sweep for phrases listed below
-    ///
-    /// Vindication phrases to detect:
-    ///   "go figure", "turns out", "little did i know", "in hindsight i was right",
-    ///   "eventually [someone] [did|came around|agreed]", "the data vindicated"
-    ///
-    /// Hedge phrases:
-    ///   "kind of", "sort of", "i guess", "probably", "maybe", "sometimes"
-    ///
-    /// Deflection phrases:
-    ///   "they ended up", "it just happened", "the team failed",
-    ///   "things fell apart", "the project died"
-    ///
-    /// In Phase 5 this entire body is replaced with:
-    ///     let metrics = BehavioralCoachCpp.compute_metrics(transcript, durationSeconds)
-    ///     return metrics.toSwift()
     static func compute(transcript: String, durationSeconds: Double) -> SpeechMetrics {
-        // Stub — returns empty metrics so Phase 1/2 compiles.
-        SpeechMetrics(
-            wordsPerMinute: 0,
+        let words = transcript.split { !$0.isLetter && !$0.isNumber && $0 != "'" }
+        let wordCount = words.count
+
+        let wordsPerMinute = durationSeconds > 0
+            ? Double(wordCount) / (durationSeconds / 60.0)
+            : 0
+
+        let fillerPhrases = ["um", "uh", "like", "you know", "basically",
+                             "actually", "kind of", "sort of"]
+        let fillerCount = fillerPhrases.reduce(0) { $0 + countMatches(of: $1, in: transcript) }
+
+        let sentenceCount = transcript.reduce(0) { count, ch in
+            (ch == "." || ch == "!" || ch == "?") ? count + 1 : count
+        }
+        let avgSentenceWords = Double(wordCount) / Double(max(sentenceCount, 1))
+
+        var codas: [DetectedCoda] = []
+        codas += detect(["go figure", "turns out", "little did i know",
+                          "in hindsight i was right", "the data vindicated"],
+                         kind: .vindication, in: transcript)
+        codas += detect(["kind of", "sort of", "i guess", "probably",
+                          "maybe", "sometimes"],
+                         kind: .hedge, in: transcript)
+        codas += detect(["they ended up", "it just happened", "the team failed",
+                          "things fell apart", "the project died"],
+                         kind: .deflection, in: transcript)
+        codas.sort { $0.charOffset < $1.charOffset }
+
+        return SpeechMetrics(
+            wordsPerMinute: wordsPerMinute,
             avgPauseSeconds: 0,
             longestPauseSeconds: 0,
-            fillerCount: 0,
-            sentenceCount: 0,
-            avgSentenceWords: 0,
-            detectedCodas: []
+            fillerCount: fillerCount,
+            sentenceCount: sentenceCount,
+            avgSentenceWords: avgSentenceWords,
+            detectedCodas: codas
         )
+    }
+
+    // MARK: - Helpers
+
+    /// Case-insensitive, word-boundary count of `phrase` occurrences in `text`.
+    private static func countMatches(of phrase: String, in text: String) -> Int {
+        guard let regex = boundaryRegex(for: phrase) else { return 0 }
+        let range = NSRange(text.startIndex..., in: text)
+        return regex.numberOfMatches(in: text, range: range)
+    }
+
+    /// Build a `[DetectedCoda]` for every word-boundary match of any phrase.
+    private static func detect(_ phrases: [String], kind: DetectedCoda.Kind, in text: String) -> [DetectedCoda] {
+        var found: [DetectedCoda] = []
+        let nsText = text as NSString
+        let fullRange = NSRange(location: 0, length: nsText.length)
+        for phrase in phrases {
+            guard let regex = boundaryRegex(for: phrase) else { continue }
+            regex.enumerateMatches(in: text, range: fullRange) { match, _, _ in
+                guard let match else { return }
+                // Convert UTF-16 match start to a Swift Character index.
+                let offset: Int
+                if let r = Range(match.range, in: text) {
+                    offset = text.distance(from: text.startIndex, to: r.lowerBound)
+                } else {
+                    offset = match.range.location
+                }
+                found.append(DetectedCoda(phrase: phrase, charOffset: offset, kind: kind))
+            }
+        }
+        return found
+    }
+
+    private static func boundaryRegex(for phrase: String) -> NSRegularExpression? {
+        let pattern = "\\b" + NSRegularExpression.escapedPattern(for: phrase) + "\\b"
+        return try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
     }
 }

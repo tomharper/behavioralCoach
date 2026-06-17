@@ -2,42 +2,86 @@
 //  HistoryView.swift
 //  BehavioralCoach
 //
-//  TODO (Phase 4 — do not implement in Phase 1):
-//
-//  Lists past Session objects from SwiftData, newest first. Tap to open
-//  SessionDetailView.
-//
-//  Suggested shape:
-//
-//      struct HistoryView: View {
-//          @Query(sort: \Session.startedAt, order: .reverse) private var sessions: [Session]
-//
-//          var body: some View {
-//              NavigationStack {
-//                  List(sessions) { session in
-//                      NavigationLink(value: session) {
-//                          HistoryRow(session: session)
-//                      }
-//                  }
-//                  .navigationDestination(for: Session.self) { SessionDetailView(session: $0) }
-//                  .navigationTitle("History")
-//              }
-//          }
-//      }
-//
-//  HistoryRow shows: date, truncated prompt, duration, and (if available)
-//  a 1-sentence pull from critique.overallNote.
-//
-//  Do NOT show thumbnails in Phase 4 — generating video thumbnails for
-//  every row is a surprising amount of work and slows down scroll. Add
-//  thumbnails in a later phase if you decide you want them.
+//  Lists past Session objects from SwiftData, newest first. Tap a row to
+//  open the read-only SessionDetailView; swipe to delete (also removes the
+//  stable video file). No thumbnails by design.
 //
 
 import SwiftUI
+import SwiftData
 
 struct HistoryView: View {
+    @Query(sort: \Session.startedAt, order: .reverse) private var sessions: [Session]
+    @Environment(\.modelContext) private var modelContext
+
     var body: some View {
-        Text("HistoryView — implement in Phase 4")
-            .foregroundStyle(.secondary)
+        NavigationStack {
+            Group {
+                if sessions.isEmpty {
+                    ContentUnavailableView(
+                        "No sessions yet",
+                        systemImage: "clock",
+                        description: Text("Record an answer to a practice question and your reviewed sessions will show up here.")
+                    )
+                } else {
+                    List {
+                        ForEach(sessions) { session in
+                            NavigationLink(value: session) {
+                                HistoryRow(session: session)
+                            }
+                        }
+                        .onDelete(perform: delete)
+                    }
+                }
+            }
+            .navigationDestination(for: Session.self) { SessionDetailView(session: $0) }
+            .navigationTitle("History")
+        }
+    }
+
+    private func delete(at offsets: IndexSet) {
+        for index in offsets {
+            let session = sessions[index]
+            if let url = session.videoFileURL {
+                RecordingStore.delete(url)
+            }
+            modelContext.delete(session)
+        }
+        try? modelContext.save()
+    }
+}
+
+private struct HistoryRow: View {
+    let session: Session
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(session.startedAt.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(durationLabel)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(session.questionPrompt)
+                .font(.subheadline)
+                .lineLimit(2)
+
+            if let note = session.critique?.overallNote {
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var durationLabel: String {
+        let total = Int(session.durationSeconds.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 }

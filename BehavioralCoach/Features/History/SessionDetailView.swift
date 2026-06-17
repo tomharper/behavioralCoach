@@ -2,35 +2,47 @@
 //  SessionDetailView.swift
 //  BehavioralCoach
 //
-//  TODO (Phase 4 — do not implement in Phase 1):
+//  Read-only view of a past session: video replay, prompt, and the shared
+//  AnalysisResultsView (transcript + metrics + critique). Same presentational
+//  view as the live AnalysisView so they cannot visually diverge.
 //
-//  Read-only view of a past session. Video replay at top, transcript in
-//  the middle, critique at the bottom. Same visual structure as
-//  AnalysisView — consider factoring shared UI out so they don't diverge.
-//
-//  Suggested shape:
-//
-//      struct SessionDetailView: View {
-//          let session: Session
-//
-//          var body: some View {
-//              ScrollView {
-//                  if let url = session.videoFileURL {
-//                      VideoPlayer(player: AVPlayer(url: url))
-//                          .aspectRatio(9/16, contentMode: .fit)
-//                  }
-//                  // Prompt, transcript, metrics, critique sections
-//              }
-//              .navigationTitle(session.startedAt.formatted(date: .abbreviated, time: .shortened))
-//          }
-//      }
+//  The stored videoFileURL is re-resolved against the current Documents/
+//  Recordings directory before playback — the app-sandbox container path can
+//  change between launches.
 //
 
 import SwiftUI
+import AVKit
 
 struct SessionDetailView: View {
+    let session: Session
+
     var body: some View {
-        Text("SessionDetailView — implement in Phase 4")
-            .foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if let url = session.videoFileURL {
+                    VideoPlayer(player: AVPlayer(url: RecordingStore.resolve(url)))
+                        .aspectRatio(9.0 / 16.0, contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+
+                Text(session.questionPrompt)
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(Color(.secondarySystemBackground),
+                                in: RoundedRectangle(cornerRadius: 12))
+
+                AnalysisResultsView(
+                    transcript: session.transcript,
+                    metrics: session.metrics,
+                    critique: session.critique,
+                    coachingError: nil
+                )
+            }
+            .padding()
+        }
+        .navigationTitle(session.startedAt.formatted(date: .abbreviated, time: .shortened))
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
