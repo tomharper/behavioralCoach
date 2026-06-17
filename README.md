@@ -1,8 +1,15 @@
 # Behavioral Coach
 
-A native iOS app for practicing behavioral interview answers. Records you on camera, transcribes what you said, and uses on-device Apple Intelligence to critique the delivery — specifically catching the reflexes that tank senior interviews: reframe/vindication codas, missing mistake-ownership, tempo issues, and structural weaknesses.
+A native iOS app for practicing behavioral and system-design interview answers. Records you on camera, transcribes what you said, and uses on-device Apple Intelligence to critique both **how you present** and **what you actually said**.
+
+It analyzes two layers:
+
+- **Presentation / delivery** — vocal tone (pace, energy, monotone vs. varied), eye contact (are you looking at the camera or away), and tempo (speaking rate, filler words, pauses). The things you can't feel in the moment but that an interviewer reads instantly.
+- **Content** — the substance of the answer: structure, whether you own the mistake, whether you state what you learned, and the reflexes that tank senior interviews (reframe/vindication codas, hedging, deflection, missing specifics).
 
 Everything runs on-device. Nothing leaves the phone. Failure stories are sensitive; they don't belong in anyone's cloud logs.
+
+> **Scope note:** content + tempo/filler analysis is modeled in the current scaffold (`Critique`, `SpeechMetrics`). **Vocal tone** (audio prosody) and **eye contact** (Vision face/gaze tracking) are intended dimensions that aren't modeled yet — they'll need new metric fields and a dedicated analysis phase. See [Roadmap](#roadmap-presentation-analysis).
 
 ## Why this exists
 
@@ -16,6 +23,19 @@ This tool is that playback, with annotations.
 - Device with Apple Intelligence support (iPhone 15 Pro and later, or A17 Pro / M-series iPad)
 - Xcode 16+
 
+## Current status
+
+**Scaffold only — no phase implemented yet.** The data layer is done; every screen is still a stub that renders a placeholder.
+
+- ✅ **Done:** `Models/` (Question, Session, SpeechMetrics, Critique), `Services/PromptLibrary.swift`, `Resources/questions.json`, app shell (`ContentView`, `BehavioralCoachApp`), Info.plist permission strings.
+- ⬜ **Phase 1 (next):** record → replay. Implement `QuestionListView`, `RecordingView`, `RecordingViewModel`, `VideoRecorder`, `CameraPreview`, and a stub `AnalysisView` player.
+- ⬜ **Phase 2:** `Transcriber.swift`.
+- ⬜ **Phase 3:** `LLMAnalyzer`, `MetricsAnalyzer`, `AnalysisViewModel`.
+- ⬜ **Phase 4:** `HistoryView`, `SessionDetailView` + SwiftData wiring.
+- ⬜ **Phase 5:** `BehavioralCoachCpp/` (not created yet).
+
+Before building Phase 1, confirm in Xcode that the three Info.plist usage keys (below) are present on the target — the app crashes without them.
+
 ## Build phases
 
 The project is designed so there's always a working app after each phase. Do not skip ahead — each phase builds on the previous, and Phase 1 alone is already useful for practice (you can record and replay without any analysis).
@@ -28,6 +48,17 @@ The project is designed so there's always a working app after each phase. Do not
 | 4 | SwiftData persistence + History tab. | 1 evening |
 | 5 | **First Swift/C++ interop boundary.** Metrics computation moves into a C++ module. | 1 evening |
 | 6+ | Optional: C++ DSP audio features, whisper.cpp, custom questions, export. | — |
+
+## Roadmap: presentation analysis
+
+The reflex/content analysis is the core, but the full vision scores delivery too. These slot in after the Phase 1–4 loop works end-to-end:
+
+| Dimension | Source | How | Where it lands |
+|---|---|---|---|
+| **Vocal tone** | recorded audio track | extract pitch/energy contour (pace, loudness variance, monotone detection) via audio analysis — candidate for the Phase 5 C++ module | new fields on `SpeechMetrics` (e.g. `pitchVariance`, `energyVariance`, `monotoneScore`) |
+| **Eye contact** | recorded video frames | Vision framework face landmarks + gaze direction sampled per frame; % of time looking at lens, longest look-away | new `PresenceMetrics` type (gaze on-camera %, look-away count) |
+
+Both feed the LLM critique as additional context so the coach can comment on delivery, not just words ("you looked away every time you hit the hard part of the story").
 
 ## Directory layout
 

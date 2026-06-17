@@ -2,38 +2,38 @@
 //  AnalysisViewModel.swift
 //  BehavioralCoach
 //
-//  TODO (Phase 2+ — stub it out for Phase 1):
+//  Orchestrates the post-recording analysis pipeline. Phase 2 scope:
+//  on-device transcription only. Metrics/critique/persistence land in
+//  Phase 3/4 (the Phase enum will grow `computing`/`coaching` cases then).
 //
-//  Orchestrates the full analysis pipeline for a finished recording:
-//
-//      videoURL  →  Transcriber     →  transcript
-//                   MetricsAnalyzer  →  SpeechMetrics
-//                   LLMAnalyzer      →  Critique
-//                   ↓
-//                   Save Session to SwiftData
-//                   ↓
-//                   Present on AnalysisView
-//
-//  Suggested shape:
-//
-//      @Observable
-//      final class AnalysisViewModel {
-//          enum Phase { case transcribing, computing, coaching, done, failed(String) }
-//
-//          private(set) var phase: Phase = .transcribing
-//          private(set) var transcript: String = ""
-//          private(set) var metrics: SpeechMetrics?
-//          private(set) var critique: Critique?
-//
-//          func analyze(videoURL: URL, question: Question) async { ... }
-//      }
-//
-//  Phase 1 can skip this entirely — the Phase 1 AnalysisView just shows
-//  the replay video and a "saved" message. Start building this in Phase 2
-//  once Transcriber exists.
+//      videoURL  →  Transcriber  →  transcript  →  AnalysisView
 //
 
 import Foundation
 import Observation
 
-// Implement here starting in Phase 2.
+@Observable
+@MainActor
+final class AnalysisViewModel {
+    enum Phase {
+        case transcribing
+        case done
+        case failed(String)
+    }
+
+    private(set) var phase: Phase = .transcribing
+    private(set) var transcript: String = ""
+
+    let transcriber = Transcriber()
+
+    func analyze(videoURL: URL, question: Question) async {
+        phase = .transcribing
+        do {
+            transcript = try await transcriber.transcribe(videoURL: videoURL)
+            phase = .done
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            phase = .failed(message)
+        }
+    }
+}
