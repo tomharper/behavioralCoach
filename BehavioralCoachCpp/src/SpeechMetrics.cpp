@@ -12,6 +12,7 @@
 
 #include <string>
 #include <cctype>
+#include <cstddef>
 #include <algorithm>
 
 namespace {
@@ -79,10 +80,25 @@ ComputedMetrics compute_metrics(const char* transcript, double durationSeconds) 
     }
   }
 
-  // Sentence count: naive terminal-punctuation tally.
+  // Sentence count: count a terminator only at a real sentence boundary.
+  // '!' and '?' always end a sentence. A '.' does not when it sits between
+  // two digits (decimals like 3.5, $4.2) and runs of terminators ("..."),
+  // are collapsed so an ellipsis counts as a single boundary. This keeps
+  // numbers-rich answers (e.g. "3.5s to 1.2s") from inflating the count and
+  // driving avgSentenceWords far too low.
   int sentenceCount = 0;
-  for (char c : text) {
-    if (c == '.' || c == '!' || c == '?') ++sentenceCount;
+  for (std::size_t i = 0; i < text.size(); ++i) {
+    char c = text[i];
+    if (c == '!' || c == '?') { ++sentenceCount; continue; }
+    if (c == '.') {
+      bool digitBefore = i > 0 &&
+                         std::isdigit(static_cast<unsigned char>(text[i - 1])) != 0;
+      bool digitAfter  = i + 1 < text.size() &&
+                         std::isdigit(static_cast<unsigned char>(text[i + 1])) != 0;
+      if (digitBefore && digitAfter) continue;            // 3.5 -> not a sentence end
+      if (i + 1 < text.size() && text[i + 1] == '.') continue;  // collapse "..."/runs
+      ++sentenceCount;
+    }
   }
 
   // Filler count: case-insensitive, word-boundary matches.
